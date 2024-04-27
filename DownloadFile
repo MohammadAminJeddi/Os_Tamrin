@@ -1,0 +1,67 @@
+using System;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
+
+class Program
+{
+    static async Task Main(string[] args)
+    {
+        string url = "https://persian13.asset.aparat.com/aparat-video/39c8b1cf5e03948e8e53d31c376070ab56404009-480p.mp4?wmsAuthSign=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbiI6IjRlZmFlMjI5MzQyZTExY2E2NmI5ZTU4Zjg1NDhiM2EwIiwiZXhwIjoxNzE0MjI2NzExLCJpc3MiOiJTYWJhIElkZWEgR1NJRyJ9.A6FKbioPK85LTGoMaSt8cUGQNkC5r_YwQ39guCZpDBw";
+        string destinationPath = "film.mp4";
+
+        using (HttpClient client = new HttpClient())
+        {
+            // دریافت اندازه فایل
+
+            System.Net.WebClient wc = new System.Net.WebClient();
+            wc.OpenRead(url);
+            int contentLength = Convert.ToInt32(wc.ResponseHeaders["Content-Length"]);
+
+            // تعداد اتصالات
+            int connections = 8;
+
+            // ایجاد یک فایل خالی با اندازه کامل
+            using (FileStream destinationStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.Write))
+            {
+                destinationStream.SetLength(contentLength);
+            }
+
+            // ایجاد یک تسک برای هر اتصال
+            Task[] downloadTasks = new Task[connections];
+            for (int i = 0; i < connections; i++)
+            {
+                int start = i * contentLength / connections;
+                int end = (i + 1) * contentLength / connections - 1;
+
+                downloadTasks[i] = DownloadRangeAsync(client, url, destinationPath, start, end);
+            }
+
+            // اجرای تمام تسک‌ها به صورت همزمان
+            await Task.WhenAll(downloadTasks);
+        }
+
+        Console.WriteLine("دانلود کامل شد.");
+    }
+
+    static async Task DownloadRangeAsync(HttpClient client, string url, string destinationPath, int start, int end)
+    {
+        using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url))
+        {
+            request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(start, end);
+
+            using (HttpResponseMessage response = await client.SendAsync(request))
+            {
+                response.EnsureSuccessStatusCode();
+
+                byte[] buffer = await response.Content.ReadAsByteArrayAsync();
+
+                using (FileStream destinationStream = new FileStream(destinationPath, FileMode.Open, FileAccess.Write, FileShare.Write))
+                {
+                    destinationStream.Position = start;
+                    await destinationStream.WriteAsync(buffer, 0, buffer.Length);
+                }
+            }
+        }
+    }
+}
